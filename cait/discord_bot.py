@@ -3,68 +3,69 @@
 import discord
 from dotenv import load_dotenv
 import os
+import sys
+import importlib
+from pathlib import Path
+from .hot_reload import HotReloader
 
 from smolagents import CodeAgent, LiteLLMModel
 from .tools.change_enshrouded_difficulty import ChangeEnshroudedDifficultyTool
 
+# Move the bot setup into a function
+def setup_bot():
+    # Load environment variables from .env file
+    load_dotenv()
+    
+    model = LiteLLMModel(
+        os.getenv('OLLAMA_MODEL'),
+        api_base=os.getenv('OLLAMA_API_BASE'),
+        api_key=os.getenv('OLLAMA_API_KEY')
+    )
+    agent = CodeAgent(model=model, tools=[ChangeEnshroudedDifficultyTool()])
 
-model = LiteLLMModel(
-    os.getenv('OLLAMA_MODEL'),
-    api_base=os.getenv('OLLAMA_API_BASE'),
-    api_key=os.getenv('OLLAMA_API_KEY')
-)
-agent = CodeAgent(model=model, tools=[ChangeEnshroudedDifficultyTool()])
+    # Set up the bot with all intents enabled
+    intents = discord.Intents.default()
+    intents.message_content = True
+    intents.guilds = True
+    return discord.Client(intents=intents), model, agent
 
-# Load environment variables from .env file
-load_dotenv()
+# Create a function to handle reloading
+def reload_application():
+    try:
+        # Reload the tool module
+        importlib.reload(sys.modules[ChangeEnshroudedDifficultyTool.__module__])
+        print("✅ Successfully reloaded application modules")
+    except Exception as e:
+        print(f"❌ Error during reload: {str(e)}")
 
-# Set up the bot with all intents enabled for message monitoring
-intents = discord.Intents.default()
-intents.message_content = True
-intents.guilds = True  # Enable guild (server) events
-client = discord.Client(intents=intents)
-
-@client.event
-async def on_ready():
-    print(f'{client.user} has connected to Discord!')
-    print(f'Connected to the following guilds:')
-    for guild in client.guilds:
-        print(f'- {guild.name} (id: {guild.id})')
-
-@client.event
-async def on_message(message):
-    # Don't respond to our own messages to avoid loops
-    if message.author == client.user:
-        return
-
-    # Create a status message that we'll update
-    status_message = await message.channel.send("🤔 Processing your request...")
-
-    async def update_status(status_text):
-        await status_message.edit(content=f"🔄 {status_text}")
+def main():
+    client, model, agent = setup_bot()
+    
+    # Set up hot reloading
+    cait_dir = Path(__file__).parent
+    project_root = cait_dir.parent
+    watch_paths = [
+        str(cait_dir),  # Watch the cait directory
+        str(project_root / '.env')  # Watch the .env file
+    ]
+    
+    hot_reloader = HotReloader(
+        reload_callback=reload_application,
+        watch_paths=watch_paths,
+        patterns=['.py', '.env']
+    )
+    hot_reloader.start()
 
     try:
-        # Create a new tool instance with the status callback in its context
-        tool = ChangeEnshroudedDifficultyTool(
-            context={"status_callback": update_status}
-        )
-        # Create a new agent instance with the tool
-        current_agent = CodeAgent(model=model, tools=[tool])
-        
-        # Run the agent and handle both async and non-async responses
-        response = current_agent.run(message.content)
-        if hasattr(response, '__await__'):
-            response = await response
+        # Get token from environment variables
+        token = os.getenv('DISCORD_TOKEN')
+        if not token:
+            raise ValueError("No DISCORD_TOKEN found in environment variables")
 
-        # Update the status message with the final response
-        await status_message.edit(content=f"✅ {response}")
-    except Exception as e:
-        await status_message.edit(content=f"❌ Error: {str(e)}")
+        print('Starting bot...')    
+        client.run(token)
+    finally:
+        hot_reloader.stop()
 
-# Get token from environment variables
-token = os.getenv('DISCORD_TOKEN')
-if not token:
-    raise ValueError("No DISCORD_TOKEN found in environment variables")
-
-print('Starting bot...')    
-client.run(token)
+if __name__ == "__main__":
+    main()
