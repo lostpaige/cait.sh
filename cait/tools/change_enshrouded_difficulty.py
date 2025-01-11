@@ -64,7 +64,7 @@ class ChangeEnshroudedDifficultyTool(Tool):
                     self.ssh.connect(host, username=username, password=password)
                     
                     status_queue.put("Reading current server configuration...")
-                    config_path = "/home/steam/enshrouded/enshrouded_server.json"
+                    config_path = os.getenv('ENSHROUDED_CONFIG_PATH', "/home/steam/enshrouded/enshrouded_server.json")
                     sftp = self.ssh.open_sftp()
                     
                     try:

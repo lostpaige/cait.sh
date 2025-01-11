@@ -8,7 +8,11 @@ from smolagents import CodeAgent, LiteLLMModel
 from .tools.change_enshrouded_difficulty import ChangeEnshroudedDifficultyTool
 
 
-model = LiteLLMModel("ollama/qwen2.5:latest", api_base="https://lm2.lan.wrng.ai", api_key="ollama")
+model = LiteLLMModel(
+    os.getenv('OLLAMA_MODEL'),
+    api_base=os.getenv('OLLAMA_API_BASE'),
+    api_key=os.getenv('OLLAMA_API_KEY')
+)
 agent = CodeAgent(model=model, tools=[ChangeEnshroudedDifficultyTool()])
 
 # Load environment variables from .env file
